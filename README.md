@@ -1,3 +1,4 @@
+HEAD
 # Group Study Finder
 
 A comprehensive web application for students to find study partners, form study groups, and collaborate effectively for academic success. Built with Flask and Vue.js.
@@ -243,3 +244,7 @@ For support, email your.email@g.bracu.ac.bd or create an issue in the repository
 ---
 
 **Happy Studying! 📚✨**
+
+# Group_Study_Finder
+cse470 project webapp where groups on unis study together
+origin/main
