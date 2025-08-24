@@ -18,8 +18,6 @@ def create_app(config_name=None):
 
     app = Flask(__name__)
     app.config.from_object(config[config_name])
-
-    # Disable strict slashes so routes with or without trailing slash both work
     app.url_map.strict_slashes = False
 
     # Initialize extensions
@@ -27,18 +25,21 @@ def create_app(config_name=None):
     migrate.init_app(app, db)
     login_manager.init_app(app)
 
-    # Enable CORS for all /api/* endpoints
     CORS(
         app,
         resources={r"/api/*": {"origins": app.config['CORS_ORIGINS']}},
         supports_credentials=True
     )
+
+    # Initialize SocketIO with proper CORS
     socketio.init_app(
         app,
-        cors_allowed_origins=app.config['CORS_ORIGINS']
+        cors_allowed_origins=app.config['CORS_ORIGINS'],
+        async_mode='threading',
+        logger=True,
+        engineio_logger=True
     )
 
-    # Configure login manager
     login_manager.login_view = 'auth.login'
     login_manager.login_message = 'Please log in to access this page.'
 
@@ -57,7 +58,6 @@ def create_app(config_name=None):
     app.register_blueprint(chat_bp, url_prefix='/api/chat')
     app.register_blueprint(notification_bp, url_prefix='/api/notifications')
 
-
     @app.errorhandler(Exception)
     def handle_all_errors(err):
         code = getattr(err, 'code', 500)
@@ -66,10 +66,10 @@ def create_app(config_name=None):
         response.status_code = code
         return response
 
-    # Create upload directory if it doesn't exist
     upload_dir = app.config.get('UPLOAD_FOLDER')
     if upload_dir and not os.path.exists(upload_dir):
         os.makedirs(upload_dir)
 
     return app
+
 

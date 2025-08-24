@@ -90,6 +90,61 @@
               <p class="text-muted mb-0">{{ group.course.course_code }}</p>
             </div>
           </div>
+
+          <!-- Group Chat (Only for Members) -->
+          <div v-if="isMember" class="card mb-4">
+            <div class="card-header">
+              <h5 class="mb-0">
+                <i class="fas fa-comments me-2"></i>Group Chat
+              </h5>
+            </div>
+            <div class="card-body p-0">
+              <!-- Messages Container -->
+              <div class="chat-messages" ref="chatMessages">
+                <div v-if="loadingMessages" class="text-center p-3">
+                  <LoadingComponent message="Loading messages..." />
+                </div>
+                <div v-else-if="groupMessages.length === 0" class="text-center p-4 text-muted">
+                  <i class="fas fa-comments display-4 mb-3"></i>
+                  <p>No messages yet. Start the conversation!</p>
+                </div>
+                <div v-else>
+                  <div
+                    v-for="msg in groupMessages"
+                    :key="msg.message_id"
+                    class="message"
+                    :class="{ 'own-message': msg.sender_id === currentUserId }"
+                  >
+                    <div class="message-header">
+                      <strong>{{ msg.sender?.name || 'Unknown User' }}</strong>
+                      <small class="text-muted">{{ formatMessageTime(msg.sent_at) }}</small>
+                    </div>
+                    <div class="message-content">{{ msg.message }}</div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Message Input -->
+              <div class="chat-input p-3 border-top">
+                <div class="d-flex gap-2">
+                  <input
+                    v-model="newMessage"
+                    @keyup.enter="sendMessage"
+                    class="form-control"
+                    placeholder="Type your message..."
+                    :disabled="sendingMessage"
+                  />
+                  <button
+                    class="btn btn-primary"
+                    @click="sendMessage"
+                    :disabled="!newMessage.trim() || sendingMessage"
+                  >
+                    <i class="fas fa-paper-plane"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Sidebar -->
@@ -229,6 +284,7 @@
 <script>
 import LoadingComponent from '@/components/LoadingComponent.vue'
 import GroupMemberCard from '@/components/GroupMemberCard.vue'
+import { io } from 'socket.io-client'
 
 export default {
   name: 'GroupDetailPage',
@@ -241,7 +297,11 @@ export default {
       showManageModal: false,
       loadingRequests: false,
       joinRequests: [],
-      respondingTo: null
+      respondingTo: null,
+      // Chat related
+      newMessage: '',
+      sendingMessage: false,
+      socket: null
     }
   },
   computed: {
@@ -269,10 +329,25 @@ export default {
     },
     leaderName() {
       return this.group?.members.find(m => m.role === 'leader')?.name || 'Unknown'
+    },
+    groupMessages() {
+      return this.$store.getters['chat/getGroupMessages'](this.id)
+    },
+    loadingMessages() {
+      return this.$store.getters['chat/isLoadingMessages']
     }
   },
   async mounted() {
     await this.loadGroupDetails()
+    if (this.isMember) {
+      await this.initializeChat()
+    }
+  },
+  beforeUnmount() {
+    if (this.socket) {
+      this.socket.emit('leave_group', { group_id: parseInt(this.id) })
+      this.socket.disconnect()
+    }
   },
   methods: {
     async loadGroupDetails() {
@@ -283,6 +358,58 @@ export default {
         this.loading = false
       }
     },
+
+    async initializeChat() {
+      // Load messages
+      await this.$store.dispatch('chat/fetchGroupMessages', this.id)
+      
+      // Initialize socket
+      this.socket = io(`${process.env.VUE_APP_API_URL || 'http://localhost:5000'}`, {
+        withCredentials: true
+      })
+      
+      this.socket.on('connect', () => {
+        this.socket.emit('join_group', { group_id: parseInt(this.id) })
+      })
+      
+      this.socket.on('group_message', (message) => {
+        if (message.group_id === parseInt(this.id)) {
+          this.$store.dispatch('chat/addGroupMessage', {
+            groupId: this.id,
+            message
+          })
+          this.$nextTick(() => this.scrollToBottom())
+        }
+      })
+      
+      // Scroll to bottom after loading messages
+      this.$nextTick(() => this.scrollToBottom())
+    },
+
+    async sendMessage() {
+      if (!this.newMessage.trim() || this.sendingMessage) return
+      
+      this.sendingMessage = true
+      try {
+        await this.$store.dispatch('chat/sendGroupMessage', {
+          groupId: this.id,
+          message: this.newMessage.trim()
+        })
+        this.newMessage = ''
+        this.$nextTick(() => this.scrollToBottom())
+      } catch (error) {
+        this.$store.dispatch('setError', 'Failed to send message')
+      } finally {
+        this.sendingMessage = false
+      }
+    },
+
+    scrollToBottom() {
+      if (this.$refs.chatMessages) {
+        this.$refs.chatMessages.scrollTop = this.$refs.chatMessages.scrollHeight
+      }
+    },
+
     async joinGroup() {
       this.actionLoading = true
       try {
@@ -293,6 +420,7 @@ export default {
         this.actionLoading = false
       }
     },
+
     async leaveGroup() {
       if (!confirm('Are you sure you want to leave this group?')) return
       this.actionLoading = true
@@ -304,6 +432,7 @@ export default {
         this.actionLoading = false
       }
     },
+
     async kickMember(userId) {
       if (!confirm('Remove this member?')) return
       try {
@@ -314,14 +443,17 @@ export default {
         this.$store.dispatch('setError', 'Failed to remove member')
       }
     },
+
     openManageModal() {
       this.showManageModal = true
       this.loadJoinRequests()
     },
+
     closeManageModal() {
       this.showManageModal = false
       this.joinRequests = []
     },
+
     async loadJoinRequests() {
       this.loadingRequests = true
       try {
@@ -331,18 +463,19 @@ export default {
         this.loadingRequests = false
       }
     },
+
     async respondToRequest(requestId, action) {
       this.respondingTo = requestId
       try {
         await this.$store.dispatch('groups/respondToJoinRequest', { requestId, action })
         this.$store.dispatch('setSuccess', `Request ${action}d`)
-        // refresh both
         await this.loadGroupDetails()
         await this.loadJoinRequests()
       } finally {
         this.respondingTo = null
       }
     },
+
     formatDate(s) { return new Date(s).toLocaleDateString() },
     formatDateTime(s) { return new Date(s).toLocaleString() },
     formatTime(s) {
@@ -351,6 +484,12 @@ export default {
            : diff === 1 ? 'Yesterday'
            : diff < 7 ? `${diff} days ago`
            : new Date(s).toLocaleDateString()
+    },
+    formatMessageTime(s) {
+      return new Date(s).toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit'
+      })
     }
   }
 }
@@ -360,4 +499,41 @@ export default {
 .group-detail-page .card { border: none; box-shadow:0 2px 10px rgba(0,0,0,0.1); }
 .group-detail-page .card-header { background:#f8f9fa; border-bottom:1px solid #e9ecef }
 .modal.show { display:block!important; }
+
+/* Chat Styles */
+.chat-messages {
+  height: 400px;
+  overflow-y: auto;
+  padding: 1rem;
+  background: #f8f9fa;
+}
+
+.message {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.message.own-message {
+  background: #e3f2fd;
+  margin-left: 2rem;
+}
+
+.message-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.25rem;
+}
+
+.message-content {
+  word-wrap: break-word;
+}
+
+.chat-input {
+  background: white;
+}
 </style>
+

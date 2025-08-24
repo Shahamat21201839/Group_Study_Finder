@@ -195,37 +195,24 @@ npm run serve
 
 ### Production Configuration
 
-1. **Environment Variables**:
+**Environment Variables**:
 ```bash
 export FLASK_CONFIG=production
 export DATABASE_URL="mysql+pymysql://username:password@host:port/database"
 export SECRET_KEY="your-secret-key"
 ```
 
-2. **Build Frontend**:
+**Build Frontend**:
 ```bash
 cd frontend
 npm run build
-```
 
-3. **Deploy Backend**:
-- Use Gunicorn or similar WSGI server
-- Configure reverse proxy (Nginx)
-- Set up SSL certificates
-
-## 🤝 Contributing
-
-1. Fork the project
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
 
 ## 📝 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License- dunno what that is - see the [LICENSE](LICENSE) file for details.
 
-## 👨‍💻 Development Team
+## 👨‍💻 Development
 
 - **Project**: CSE470 - Software Engineering
 - **Institution**: BRAC University
@@ -234,12 +221,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🐛 Known Issues
 
 - File upload functionality is planned for future releases
-- Email notifications need SMTP configuration
-- Mobile app version is planned
+- Notifications not complete
 
 ## 📞 Support
 
-For support, email your.email@g.bracu.ac.bd or create an issue in the repository.
+For support, email am.shahamat.nurain@g.bracu.ac.bd or create an issue in the repository.
 
 ---
 
